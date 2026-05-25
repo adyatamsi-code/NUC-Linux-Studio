@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NUC OSD
+Comment=On-Screen Display for NUC hotkeys
+Exec=bash -c 'sleep 5 && exec env GDK_BACKEND=x11 /usr/bin/python3 /opt/nuc-linux-studio/backend/osd.py'
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Phase=Applications
+

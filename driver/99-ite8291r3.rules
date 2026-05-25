@@ -1,0 +1,8 @@
+# Auto-bind ite8291r3 driver to ITE8291 keyboard backlight controller interface 1
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="048d", ATTR{idProduct}=="6004", RUN+="/bin/sh -c 'echo $kernel:1.1 > /sys/bus/usb/drivers/ite8291r3/bind 2>/dev/null || true'"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="048d", ATTR{idProduct}=="6006", RUN+="/bin/sh -c 'echo $kernel:1.1 > /sys/bus/usb/drivers/ite8291r3/bind 2>/dev/null || true'"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="048d", ATTR{idProduct}=="ce00", RUN+="/bin/sh -c 'echo $kernel:1.1 > /sys/bus/usb/drivers/ite8291r3/bind 2>/dev/null || true'"
+
+# Allow userspace access to the LED sysfs (for the GUI app)
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="ite8291r3::kbd_backlight", RUN+="/bin/chmod 0666 /sys/class/leds/ite8291r3::kbd_backlight/brightness /sys/class/leds/ite8291r3::kbd_backlight/color /sys/class/leds/ite8291r3::kbd_backlight/effect /sys/class/leds/ite8291r3::kbd_backlight/key_colors"
+

@@ -1,0 +1,5 @@
+# NUC Linux Studio - Python dependencies
+# System packages (tkinter): sudo dnf install python3-tkinter
+# System packages (evdev):   pip install evdev (or dnf install python3-evdev)
+evdev>=1.6.0
+

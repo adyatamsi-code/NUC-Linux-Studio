@@ -1,0 +1,1 @@
+savedcmd_nuc_wmi.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T /usr/src/kernels/7.0.8-200.fc44.x86_64/scripts/module.lds -o nuc_wmi.ko nuc_wmi.o nuc_wmi.mod.o .module-common.o

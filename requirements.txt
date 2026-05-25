@@ -1,0 +1,19 @@
+# NUC Linux Studio - Python dependencies
+#
+# System packages (tkinter):  sudo dnf install python3-tkinter
+# System packages (evdev):    pip install evdev   OR   dnf install python3-evdev
+# System packages (pyusb):    pip install pyusb   OR   dnf install python3-pyusb
+#
+# Keyboard audio visualizer (audio effect):
+#   pip install ite8291r3-ctl
+#   NOTE: The Python *package* is required (imported as `ite8291r3_ctl`).
+#         The CLI binary wrapper (`ite8291r3-ctl`) is NOT used — removed in v2.0.
+#         Only install if you use the Audio Visualizer keyboard effect.
+#
+# Optional: GPU-accelerated audio visualizer (RTX 3070, CUDA 12)
+#   pip install cupy-cuda12x
+#   (Falls back to NumPy/CPU automatically if CuPy is not installed)
+
+evdev>=1.6.0
+# ite8291r3-ctl>=0.0.1  # Uncomment only if needed for audio effect (pip install ite8291r3-ctl)
+# cupy-cuda12x>=13.0.0  # Uncomment for GPU-accelerated audio visualizer (CUDA 12 required)

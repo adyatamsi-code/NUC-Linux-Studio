@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Interactive ITE8291R3 music/audio mode tester.
+Press Enter to advance to next test, or 'q' + Enter to quit."""
+import usb.core
+import usb.util
+import sys
+import threading
+
+VENDOR_ID = 0x048D
+PRODUCT_IDS = [0x6004, 0x6006, 0xCE00]
+
+def find_device():
+    for pid in PRODUCT_IDS:
+        dev = usb.core.find(idVendor=VENDOR_ID, idProduct=pid)
+        if dev:
+            print(f"Found ITE8291R3: VID={VENDOR_ID:#06x} PID={pid:#06x}")
+            return dev
+    return None
+
+def send_ctrl(dev, *payload):
+    payload = list(payload)
+    if len(payload) < 8:
+        payload += [0] * (8 - len(payload))
+    print(f"  >> {[hex(b) for b in payload]}")
+    dev.ctrl_transfer(
+        usb.util.build_request_type(
+            usb.util.CTRL_OUT,
+            usb.util.CTRL_TYPE_CLASS,
+            usb.util.CTRL_RECIPIENT_INTERFACE),
+        0x09, 0x0300, 0x0001, payload)
+
+def wait_for_input(prompt="Press Enter for next test, 'q' to quit: "):
+    r = input(prompt).strip().lower()
+    if r == 'q':
+        return False
+    return True
+
+dev = find_device()
+if not dev:
+    print("Device not found!"); sys.exit(1)
+
+for cfg in dev:
+    for intf in cfg:
+        if intf.bInterfaceNumber == 1:
+            if dev.is_kernel_driver_active(1):
+                dev.detach_kernel_driver(1)
+
+print("\n" + "="*60)
+print("  ITE8291R3 MUSIC MODE INTERACTIVE TESTER")
+print("  Play music throughout! Press Enter to advance.")
+print("="*60)
+
+tests = [
+    # (description, setup_cmds, audio_cmd)
+    # Test various base effects + CMD 0x02 audio enable
+    ("Aurora + Audio (sensitivity 0x01)",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0x01)),
+
+    ("Aurora + Audio (sensitivity 0x05)",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0x05)),
+
+    ("Aurora + Audio (sensitivity 0x0A)",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0x0A)),
+
+    ("Aurora + Audio (sensitivity 0x32)",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0x32)),
+
+    ("Aurora + Audio (sensitivity 0x50)",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0x50)),
+
+    ("Aurora + Audio (sensitivity 0xFF)",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0xFF)),
+
+    ("Direct Mode (0x33) + Audio (sensitivity 0xFF)",
+     [(0x08, 0x02, 0x33, 0x00, 0x32, 0x00, 0x00, 0x00)],
+     (0x02, 0x01, 0xFF)),
+
+    ("Direct Mode (0x33) + Audio (sensitivity 0x32)",
+     [(0x08, 0x02, 0x33, 0x00, 0x32, 0x00, 0x00, 0x00)],
+     (0x02, 0x01, 0x32)),
+
+    ("Ripple + Audio (sensitivity 0xFF)",
+     [(0x08, 0x02, 0x06, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0xFF)),
+
+    ("Breathing + Audio (sensitivity 0xFF)",
+     [(0x08, 0x02, 0x02, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0xFF)),
+
+    ("Raindrop + Audio (sensitivity 0xFF)",
+     [(0x08, 0x02, 0x0A, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x01, 0xFF)),
+
+    ("Wave + Audio (sensitivity 0xFF)",
+     [(0x08, 0x02, 0x03, 0x05, 0x32, 0x08, 0x01, 0x01)],
+     (0x02, 0x01, 0xFF)),
+
+    ("CMD 0x02 mode=0x02 (alt mode) + sensitivity 0xFF",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x02, 0xFF)),
+
+    ("CMD 0x02 mode=0x03 + sensitivity 0xFF",
+     [(0x08, 0x02, 0x0E, 0x05, 0x32, 0x08, 0x00, 0x01)],
+     (0x02, 0x03, 0xFF)),
+
+    ("Aurora reactive=1 speed=0 + Audio",
+     [(0x08, 0x02, 0x0E, 0x00, 0x32, 0x08, 0x01, 0x01)],
+     (0x02, 0x01, 0xFF)),
+
+    ("Aurora reactive=1 speed=0x0A + Audio",
+     [(0x08, 0x02, 0x0E, 0x0A, 0x32, 0x08, 0x01, 0x01)],
+     (0x02, 0x01, 0xFF)),
+]
+
+for i, (desc, setup, audio) in enumerate(tests):
+    print(f"\n{'='*60}")
+    print(f"  TEST {i+1}/{len(tests)}: {desc}")
+    print(f"{'='*60}")
+
+    # Disable audio first
+    send_ctrl(dev, 0x02, 0x00, 0x00)
+
+    # Send setup commands
+    for cmd in setup:
+        send_ctrl(dev, *cmd)
+
+    import time; time.sleep(0.5)
+
+    # Enable audio
+    send_ctrl(dev, *audio)
+
+    print(f"\n  >>> ACTIVE: {desc}")
+    print(f"  >>> Play music and observe keyboard!")
+    if not wait_for_input():
+        break
+
+# Cleanup
+print("\n=== Cleaning up ===")
+send_ctrl(dev, 0x02, 0x00, 0x00)
+send_ctrl(dev, 0x08, 0x02, 0x02, 0x05, 0x32, 0x08, 0x00, 0x01)
+print("Restored to breathing. Done!")
+

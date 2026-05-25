@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+Module.symvers
+modules.order
+.venv/
+*.egg-info/
+dist/
+build/
+.idea/

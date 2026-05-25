@@ -1,0 +1,1 @@
+savedcmd_nuc_wmi.mod := printf '%s\n'   ec.o features.o main.o misc.o pdev.o events.o debugfs.o battery.o led_lightbar.o hwmon.o hwmon_fan.o hwmon_pwm.o fan.o | awk '!x[$$0]++ { print("./"$$0) }' > nuc_wmi.mod

@@ -1,0 +1,16 @@
+[Unit]
+Description=NUC Linux Studio On-Screen Display
+Documentation=https://github.com/nuc-linux-studio
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 3
+Environment=GDK_BACKEND=x11
+ExecStart=/usr/bin/python3 /opt/nuc-linux-studio/backend/osd.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,3 +1,17 @@
+## [2.6.2] 2026-05-30 — Fan Resume Fix: EC PWM Release on Suspend/Resume
+
+### Fan Curve Daemon — Fans No Longer Stuck at Full Blast After Resume
+
+- **Bug**: After suspend/resume, CPU and GPU fans ran at full blast until the 12-second grace period expired (~12s of loud fans after every wake).
+- **Root cause**: The fan-curve daemon held `manual_control=1` (PWM writes active) across suspend. When the EC resumed, it found stale PWM values (often 255) already set and couldn't override them during its internal init phase — the daemon and the EC were fighting over PWM registers.
+- **Fix 1 — systemd-sleep hook** (`packaging/nuc-fan-curve-sleep` → `/usr/lib/systemd/system-sleep/nuc-fan-curve`): New bash hook called by `systemd-sleep` before every suspend. Releases `manual_control=0` and `pwm1_enable=0` / `pwm2_enable=0` for both `nuc_wmi` and `qc71_laptop` platform paths. EC gets clean ownership before the system powers down.
+- **Fix 2 — daemon resume path** (`backend/fan_curve_daemon.py`): On resume detection (wakeup_count change), daemon now immediately releases fan control (`manual_control=0`, `pwm1_enable=0`) before waiting for sysfs to stabilize. Sets a 12s `manual_grace_until` window so PWM writes are blocked while the EC finishes its own thermal initialization. Clears `last_cpu_pwm` / `last_dgpu_pwm` to force a fresh curve re-apply after the grace period.
+- **install.sh**: Added step that installs the sleep hook with `chmod +x` and verifies the file is in place.
+- **Log output**: `Resume detected — releasing fan control and waiting for EC to settle...` then `Fan control released to EC for resume init`.
+- **Files**: `backend/fan_curve_daemon.py`, `install.sh`, `packaging/nuc-fan-curve-sleep`
+
+---
+
 ## [2.6.1] 2026-05-17 — Suspend/Resume Bug Fixes: Gaming Theme, Battery Limit Race
 
 ### Keyboard — Gaming/Coding/Writing/Glow Themes Restored Correctly After Resume

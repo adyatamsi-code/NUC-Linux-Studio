@@ -256,8 +256,30 @@ def main() -> None:
                     count = int(Path("/sys/power/wakeup_count").read_text().strip())
                 if last_suspend_count is not None and count != last_suspend_count:
                     last_suspend_count = count
-                    print("  Resume detected — re-discovering hwmon paths...", flush=True)
-                    time.sleep(2)  # wait for sysfs to stabilize
+                    print("  Resume detected — releasing fan control and waiting for EC to settle...", flush=True)
+
+                    # Immediately release manual control so the EC can do its own
+                    # resume initialization (fan speed ramp-up/ramp-down).
+                    # Without this the EC fights our PWM writes during its init
+                    # phase and fans stay at full blast.
+                    try:
+                        if manual.exists():
+                            manual.write_text("0")
+                        for pwm_en in [ctrl / "pwm1_enable", ctrl / "pwm2_enable"]:
+                            if pwm_en.exists():
+                                pwm_en.write_text("0")
+                        print("  Fan control released to EC for resume init", flush=True)
+                    except Exception as _e:
+                        print(f"  Fan release warning: {_e}", flush=True)
+
+                    # Give the EC 12s to finish its resume initialization — same
+                    # budget as the boot grace period.  The grace-period logic below
+                    # will block PWM writes until this window expires.
+                    manual_grace_until = time.time() + 12.0
+                    last_cpu_pwm = None
+                    last_dgpu_pwm = None
+
+                    time.sleep(3)  # wait for sysfs to stabilize
                     new_ctrl = _find_ctrl_hwmon()
                     new_sensor = _find_sensor_hwmon()
                     if new_ctrl and new_sensor:
@@ -284,9 +306,6 @@ def main() -> None:
                     except Exception as e:
                         print(f"  upower restart failed: {e}", flush=True)
                     _reapply_battery_limit()
-                    # Force fan curve re-apply on next tick
-                    last_cpu_pwm = None
-                    last_dgpu_pwm = None
             except Exception:
                 pass
 

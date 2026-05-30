@@ -262,6 +262,13 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
+# Install systemd-sleep hook — releases fan control before suspend so the EC
+# doesn't fight stale PWM values on resume (fans at full blast after wake).
+log "Installing fan-curve suspend/resume sleep hook..."
+mkdir -p /usr/lib/systemd/system-sleep
+cp "${SCRIPT_DIR}/packaging/nuc-fan-curve-sleep" /usr/lib/systemd/system-sleep/nuc-fan-curve
+chmod +x /usr/lib/systemd/system-sleep/nuc-fan-curve
+
 # Install udev rule to reapply battery limit whenever AC adapter changes state
 # (power-profiles-daemon resets charge_control_end_threshold on AC plug/unplug events)
 cat > /etc/udev/rules.d/99-nuc-battery-limit.rules << 'UDEV_EOF'

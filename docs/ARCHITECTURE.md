@@ -311,22 +311,43 @@ t=N:  User must click "Apply" manually to restore colors
 
 ```
 SUSPEND:
-  1. System suspends → USB devices power down → ITE8291R3 loses all state
-  
+  1. systemd-sleep invokes /usr/lib/systemd/system-sleep/nuc-fan-curve (pre)
+     └─ Releases manual_control=0, pwm1_enable=0, pwm2_enable=0
+     └─ EC gets clean ownership of fans before power-down
+  2. System suspends → USB devices power down → ITE8291R3 loses all state
+
 RESUME:
   1. USB re-enumerates → ite8291r3 driver re-probes
   2. udev rule fires → chmod 0666
-  3. Daemon (still running) detects resume via suspend_stats counter change
-  4. Waits 2 seconds
-  5. _restore_keyboard_on_resume()
-     └─ Waits up to 10s for sysfs LED to appear
-     └─ set_brightness(current_level)
-        └─ _ensure_effect_on()  → restores per-key or monocolor from config
-  
-  6. App (if running) detects resume via timer drift (30s check)
+  3. fan_curve_daemon detects resume via suspend_stats counter change
+     └─ Immediately releases fan control (manual_control=0, pwm{1,2}_enable=0)
+     └─ Sets manual_grace_until = now + 12s  (blocks PWM writes)
+     └─ Resets last_cpu_pwm / last_dgpu_pwm (forces fresh re-apply after grace)
+     └─ Waits 3s for sysfs to stabilize, re-discovers hwmon paths
+     └─ After grace period: re-applies curve at current temps
+  4. kbd_brightness_daemon detects resume via suspend_stats counter change
+     └─ Waits 2 seconds
+     └─ _restore_keyboard_on_resume()
+        └─ Waits up to 10s for sysfs LED to appear
+        └─ set_brightness(current_level)
+           └─ _ensure_effect_on()  → restores per-key or monocolor from config
+
+  5. App (if running) detects resume via timer drift (30s check)
      └─ load_config(restore_power_profile=False)
         └─ KeyboardTab.load_state() → apply_settings()
            └─ per-key mode: does NOT auto-apply colors ← ⚠️ SAME ISSUE
+```
+
+**Fan resume timeline (fixed)**:
+```
+t=0      systemd-sleep fires nuc-fan-curve pre hook → fans released to EC
+t=0      System suspends
+t=N      System resumes
+t=N      daemon detects wakeup_count change → releases fans again (safety net)
+t=N      manual_grace_until = N + 12s (EC init window)
+t=N+3s   hwmon paths re-discovered
+t=N+12s  grace period expires → daemon applies curve normally
+         ← No full-blast fans during EC init phase
 ```
 
 ---
@@ -476,6 +497,8 @@ install.sh
   ├─ Creates touchpad-led.service → /usr/lib/systemd/system/
   ├─ Creates fan-curve.service → /usr/lib/systemd/system/
   ├─ Creates kbd-audio.service → /usr/lib/systemd/system/
+  ├─ Creates nuc-battery-limit.service → /usr/lib/systemd/system/
+  ├─ Installs nuc-fan-curve sleep hook → /usr/lib/systemd/system-sleep/nuc-fan-curve
   ├─ Creates /usr/local/bin/nuc-studio launcher
   └─ Creates polkit policy → /usr/share/polkit-1/actions/
 
@@ -1158,7 +1181,55 @@ _reapply_battery_limit()
 
 ---
 
-## TODO: Minimum Window Size & OSD Scaling
+## 15. Fan Curve Suspend / Resume — EC PWM Handoff
+
+### The Problem (fixed in v2.6.2)
+
+When the system suspended while the fan-curve daemon held `manual_control=1`, the EC woke up finding stale PWM values (often 255 = full blast) already committed to the hwmon registers. The EC couldn't override them during its own thermal initialization, causing fans to run at full speed for the full 12-second grace period after every resume.
+
+### Solution: Two-Layer Release
+
+```
+LAYER 1 — systemd-sleep hook (packaging/nuc-fan-curve-sleep)
+  Installed at: /usr/lib/systemd/system-sleep/nuc-fan-curve
+  Called by:    systemd-sleep BEFORE the system suspends
+
+  pre-suspend action:
+    for platform in nuc_wmi qc71_laptop:
+      manual_control = 0       (release to EC)
+      pwm1_enable = 0          (revert to EC automatic)
+      pwm2_enable = 0
+  post-resume action: no-op (daemon handles resume)
+
+LAYER 2 — fan_curve_daemon.py resume handler
+  Triggered by: wakeup_count change detection
+  Action:
+    manual_control = 0         (safety net if pre-hook was missed)
+    pwm{1,2}_enable = 0
+    manual_grace_until = now + 12s
+    last_cpu_pwm = None        (force curve re-apply after grace)
+    last_dgpu_pwm = None
+    sleep(3)                   (sysfs stabilize)
+    re-discover hwmon paths
+    (after grace period: re-apply curve at current temps)
+```
+
+### Why Two Layers?
+
+- The sleep hook fires **before** power is cut — the EC receives `manual_control=0` while fully powered. This is the clean path.
+- The daemon resume handler fires **after** power is restored — it's a safety net for edge cases (hook file missing, hook failed, stale daemon state).
+
+### Registers Touched
+
+| Register | Value Written | When | Why |
+|----------|:---:|------|-----|
+| `manual_control` (nuc_wmi sysfs) | `0` | Pre-suspend + post-resume | Returns fan control to EC |
+| `pwm1_enable` (hwmon) | `0` | Pre-suspend + post-resume | EC automatic mode |
+| `pwm2_enable` (hwmon) | `0` | Pre-suspend + post-resume | EC automatic mode |
+
+No PWM values are written — the EC uses its own builtin thermal curves during the init window.
+
+---
 
 ### Minimum Window Size (`ui/main.py`)
 - **TODO**: Call `root.minsize(width, height)` in `ui/main.py` after the main window is created.

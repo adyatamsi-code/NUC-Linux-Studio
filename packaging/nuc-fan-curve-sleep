@@ -1,0 +1,39 @@
+#!/bin/bash
+# /usr/lib/systemd/system-sleep/nuc-fan-curve
+#
+# Release manual fan control back to the EC firmware before suspend.
+# Without this the EC wakes up fighting stale PWM values written by our
+# daemon, which causes fans to run at full blast after resume until the
+# 12-second grace period in fan_curve_daemon.py expires.
+#
+# Called by systemd-sleep with two arguments:
+#   $1 = pre | post
+#   $2 = suspend | hibernate | hybrid-sleep | suspend-then-hibernate
+
+case "$1" in
+    pre)
+        # Releasing fan control before the system suspends.
+        for platform in nuc_wmi qc71_laptop; do
+            manual="/sys/devices/platform/${platform}/manual_control"
+            hwmon_base="/sys/devices/platform/${platform}/hwmon"
+
+            if [[ -f "$manual" ]]; then
+                echo 0 > "$manual" 2>/dev/null && \
+                    logger -t nuc-fan-curve "Pre-sleep: fan control released to EC (${platform})" || true
+            fi
+
+            if [[ -d "$hwmon_base" ]]; then
+                for hwmon in "$hwmon_base"/hwmon*; do
+                    [[ -f "$hwmon/pwm1_enable" ]] && echo 0 > "$hwmon/pwm1_enable" 2>/dev/null || true
+                    [[ -f "$hwmon/pwm2_enable" ]] && echo 0 > "$hwmon/pwm2_enable" 2>/dev/null || true
+                done
+            fi
+        done
+        ;;
+    post)
+        # Nothing to do here — fan_curve_daemon.py detects resume via
+        # suspend_stats and re-applies the curve after its own 12s grace period.
+        logger -t nuc-fan-curve "Post-sleep: fan_curve_daemon will re-apply curve after EC init"
+        ;;
+esac
+
